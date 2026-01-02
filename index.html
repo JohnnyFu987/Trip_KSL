@@ -324,12 +324,14 @@
 
           <!-- 行程表頁面 -->
           <div v-if="currentTab === 'schedule'" class="space-y-4">
-             <div class="grid grid-cols-3 gap-2 pb-2">
+             <!-- 日期按鈕區：動態從 tripDates 渲染 -->
+             <div class="flex gap-2 pb-2 overflow-x-auto no-scrollbar">
                <button v-for="d in tripDates" :key="d" @click="currentDate = d"
                  :class="currentDate === d ? 'bg-sky-400 text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
-                 class="w-full py-2 rounded-full text-xs font-bold transition-colors">
+                 class="px-5 py-2 rounded-full text-xs font-bold transition-colors whitespace-nowrap">
                  {{ formatDate(d) }}
                </button>
+               <div v-if="tripDates.length === 0" class="text-[10px] text-gray-400 py-2">尚未同步行程日期...</div>
              </div>
 
              <div class="bg-white p-1 rounded-3xl shadow-sm border border-gray-200 relative overflow-hidden">
@@ -650,9 +652,9 @@
           const myIdentity = ref(localStorage.getItem('myIdentity') || '');
           const imgError = ref(false);
 
-          // 範例日期，可根據實際需求由後端帶入
-          const tripDates = ['2025-12-17', '2025-12-18', '2025-12-19', '2025-12-20', '2025-12-21', '2025-12-22'];
-          const currentDate = ref(tripDates[0]);
+          // 修改：tripDates 改為 ref([])，不再寫死
+          const tripDates = ref([]);
+          const currentDate = ref(''); // 初始設為空，載入資料後再設為第一個日期
           const showItinModal = ref(false);
           const isEditingItin = ref(false);
           const editingItinId = ref(null);
@@ -702,6 +704,7 @@
           });
 
           const filteredItinerary = computed(() => {
+             if(!currentDate.value) return [];
              return itineraryList.value
                 .filter(i => i.date === currentDate.value)
                 .sort((a,b) => a.startTime.localeCompare(b.startTime));
@@ -771,7 +774,7 @@
           watch(currentDate, () => { if (currentTab.value === 'schedule') updateMapMarkers(); });
 
           const openAddItinModal = () => {
-              Object.assign(itinForm, { date: currentDate.value, startTime: '09:00', endTime: '', location: '', transport: 'walk', note: '' });
+              Object.assign(itinForm, { date: currentDate.value || new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '', location: '', transport: 'walk', note: '' });
               isEditingItin.value = false;
               editingItinId.value = null;
               showItinModal.value = true;
@@ -798,6 +801,7 @@
                   runGAS('editItinerary', [updatedItem]).then(res => {
                     isSyncing.value = false;
                     if (!res.success) Swal.fire('錯誤', '更新失敗', 'error');
+                    else loadData(true); // 編輯後重新整理日期清單
                   });
               }
           }
@@ -805,14 +809,14 @@
           const submitItin = () => {
               if (!itinForm.location || !itinForm.startTime) return;
               const tempId = Date.now().toString();
-              const newItin = { ...itinForm, id: tempId, date: currentDate.value };
+              const newItin = { ...itinForm, id: tempId, date: currentDate.value || itinForm.date };
               itineraryList.value.push(newItin);
               showItinModal.value = false;
               updateMapMarkers();
               isSyncing.value = true;
               runGAS('addItinerary', [itinForm]).then(res => {
                 isSyncing.value = false;
-                if(!res.success) loadData(true);
+                loadData(true); // 新增後重新整理日期清單
               });
           };
 
@@ -822,7 +826,10 @@
                    itineraryList.value = itineraryList.value.filter(i => i.id !== id);
                    updateMapMarkers();
                    isSyncing.value = true;
-                   runGAS('deleteItinerary', [id]).then(() => isSyncing.value = false);
+                   runGAS('deleteItinerary', [id]).then(() => {
+                     isSyncing.value = false;
+                     loadData(true);
+                   });
                 }
               });
           };
@@ -879,6 +886,19 @@
                  expenses.value = Array.isArray(data.expenses) ? data.expenses.filter(i => i.item) : [];
                  itineraryList.value = data.itinerary || [];
                  shoppingList.value = data.shopping || [];
+                 
+                 // 修改：自動提取 itineraryList 中出現的所有唯一日期
+                 if (itineraryList.value.length > 0) {
+                   const uniqueDates = [...new Set(itineraryList.value.map(i => i.date))].sort();
+                   tripDates.value = uniqueDates;
+                   // 如果目前選擇的日期不在清單中，預設選第一個
+                   if (!currentDate.value || !uniqueDates.includes(currentDate.value)) {
+                     currentDate.value = uniqueDates[0];
+                   }
+                 } else {
+                   tripDates.value = [];
+                 }
+
                  if(!form.payer && users.value.length>0) form.payer = users.value[0].name;
                  calculateSettlement();
                  if (currentTab.value === 'schedule') updateMapMarkers();
