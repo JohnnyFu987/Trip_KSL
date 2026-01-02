@@ -205,8 +205,8 @@
               <button @click="loadData" class="mt-2 text-xs bg-white border border-red-200 text-red-500 px-3 py-1 rounded-full font-bold shadow-sm">重試連線</button>
           </div>
 
-          <!-- 記帳頁面 -->
-          <div v-if="currentTab === 'record'" class="space-y-5">
+          <!-- 記帳頁面 (修正：使用 v-show) -->
+          <div v-show="currentTab === 'record'" class="space-y-5">
             <div class="glass-card rounded-3xl p-5 relative overflow-hidden">
                <div class="absolute -top-10 -right-10 w-32 h-32 bg-pink-100 rounded-full opacity-50 pointer-events-none"></div>
                <div class="absolute -bottom-10 -left-10 w-24 h-24 bg-blue-100 rounded-full opacity-50 pointer-events-none"></div>
@@ -322,8 +322,8 @@
             </div>
           </div>
 
-          <!-- 行程表頁面 -->
-          <div v-if="currentTab === 'schedule'" class="space-y-4">
+          <!-- 行程表頁面 (修正：使用 v-show) -->
+          <div v-show="currentTab === 'schedule'" class="space-y-4">
              <!-- 日期按鈕區：動態從 tripDates 渲染 -->
              <div class="flex gap-2 pb-2 overflow-x-auto no-scrollbar">
                <button v-for="d in tripDates" :key="d" @click="currentDate = d"
@@ -389,8 +389,8 @@
              </button>
           </div>
 
-          <!-- 購物清單頁面 -->
-          <div v-if="currentTab === 'shopping'" class="space-y-4">
+          <!-- 購物清單頁面 (修正：使用 v-show) -->
+          <div v-show="currentTab === 'shopping'" class="space-y-4">
              <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
                 <div class="flex items-center gap-2 mb-2">
                    <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-500"><i class="fas fa-shopping-basket"></i></div>
@@ -437,8 +437,8 @@
              </div>
           </div>
 
-          <!-- 結算頁面 -->
-          <div v-if="currentTab === 'settlement'" class="space-y-5">
+          <!-- 結算頁面 (修正：使用 v-show) -->
+          <div v-show="currentTab === 'settlement'" class="space-y-5">
              <div class="bg-gradient-to-br from-pink-500 to-rose-400 text-white p-6 rounded-[2rem] shadow-xl shadow-pink-200 relative overflow-hidden">
                <i class="fas fa-calculator absolute -bottom-5 -right-5 text-9xl text-white opacity-10 transform -rotate-12"></i>
                <div class="relative z-10 text-center">
@@ -471,8 +471,8 @@
              </div>
           </div>
 
-          <!-- 個人中心頁面 -->
-          <div v-if="currentTab === 'personal'" class="space-y-5">
+          <!-- 個人中心頁面 (修正：使用 v-show) -->
+          <div v-show="currentTab === 'personal'" class="space-y-5">
              <div class="glass-card rounded-[2.5rem] p-8 text-center relative mt-12 z-0">
               <div class="absolute inset-0 rounded-[2.5rem] overflow-hidden -z-10 pointer-events-none">
                 <div class="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-blue-100 to-transparent opacity-50"></div>
@@ -531,7 +531,7 @@
         </div>
       </div>
 
-      <!-- 彈窗組件 -->
+      <!-- 彈窗組件 (不變更) -->
       <!-- 編輯花費彈窗 -->
       <div v-if="showEditModal" class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
         <div class="bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl animate-[slideUp_0.3s_ease-out]">
@@ -652,9 +652,8 @@
           const myIdentity = ref(localStorage.getItem('myIdentity') || '');
           const imgError = ref(false);
 
-          // 修改：tripDates 改為 ref([])，不再寫死
           const tripDates = ref([]);
-          const currentDate = ref(''); // 初始設為空，載入資料後再設為第一個日期
+          const currentDate = ref('');
           const showItinModal = ref(false);
           const isEditingItin = ref(false);
           const editingItinId = ref(null);
@@ -665,8 +664,9 @@
 
           const enterSite = () => {
              showCover.value = false;
+             // 進入網站後如果是行程頁面就初始化地圖
              if(currentTab.value === 'schedule') {
-                nextTick(() => { initMap(); updateMapMarkers(); });
+                nextTick(() => { handleMapDisplay(); });
              }
           };
 
@@ -729,7 +729,6 @@
                 setTimeout(initMap, 500);
                 return;
               }
-              // 預設中心點 (台北或自定中心)
               map = L.map('osm-map').setView([25.0339, 121.5644], 13);
               L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                 attribution: '&copy; CARTO',
@@ -762,10 +761,27 @@
               }
           };
 
+          // 核心修正：處理地圖顯示與尺寸重算
+          const handleMapDisplay = () => {
+              if (!map) {
+                  initMap();
+                  updateMapMarkers();
+              } else {
+                  // v-show 切換後，需要延遲一下等 DOM 渲染完畢
+                  setTimeout(() => {
+                      map.invalidateSize(); // 修正 Leaflet 縮放問題
+                      updateMapMarkers();
+                      // 如果有景點，稍微偏移中心強迫重繪
+                      const center = map.getCenter();
+                      map.panTo(center);
+                  }, 200);
+              }
+          };
+
           const changeTab = (tab) => {
               currentTab.value = tab;
               if (tab === 'schedule') {
-                nextTick(() => { initMap(); updateMapMarkers(); });
+                nextTick(() => { handleMapDisplay(); });
               } else if (tab === 'settlement') {
                 calculateSettlement();
               }
@@ -801,7 +817,7 @@
                   runGAS('editItinerary', [updatedItem]).then(res => {
                     isSyncing.value = false;
                     if (!res.success) Swal.fire('錯誤', '更新失敗', 'error');
-                    else loadData(true); // 編輯後重新整理日期清單
+                    else loadData(true);
                   });
               }
           }
@@ -816,7 +832,7 @@
               isSyncing.value = true;
               runGAS('addItinerary', [itinForm]).then(res => {
                 isSyncing.value = false;
-                loadData(true); // 新增後重新整理日期清單
+                loadData(true);
               });
           };
 
@@ -887,11 +903,9 @@
                  itineraryList.value = data.itinerary || [];
                  shoppingList.value = data.shopping || [];
                  
-                 // 修改：自動提取 itineraryList 中出現的所有唯一日期
                  if (itineraryList.value.length > 0) {
                    const uniqueDates = [...new Set(itineraryList.value.map(i => i.date))].sort();
                    tripDates.value = uniqueDates;
-                   // 如果目前選擇的日期不在清單中，預設選第一個
                    if (!currentDate.value || !uniqueDates.includes(currentDate.value)) {
                      currentDate.value = uniqueDates[0];
                    }
@@ -901,7 +915,7 @@
 
                  if(!form.payer && users.value.length>0) form.payer = users.value[0].name;
                  calculateSettlement();
-                 if (currentTab.value === 'schedule') updateMapMarkers();
+                 if (currentTab.value === 'schedule') handleMapDisplay();
               }
             } catch (err) { loadError.value = err.message; } 
             finally { isInitialLoading.value = false; isSyncing.value = false; }
